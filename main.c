@@ -12,7 +12,14 @@
 
 #include "pipex.h"
 
-static void	child_process(char **argv, char **envp, int *fd)
+static int	exit_status(int status)
+{
+	if (WIFSIGNALED(status))
+		return (128 + WTERMSIG(status));
+	return (WEXITSTATUS(status));
+}
+
+static void	exec_cmd1(char **argv, char **envp, int *fd)
 {
 	int	infile;
 
@@ -20,6 +27,8 @@ static void	child_process(char **argv, char **envp, int *fd)
 	if (infile == -1)
 	{
 		perror("open file1");
+		close(fd[0]);
+		close(fd[1]);
 		exit(1);
 	}
 	dup2(infile, STDIN_FILENO);
@@ -30,7 +39,7 @@ static void	child_process(char **argv, char **envp, int *fd)
 	execute_cmd(argv[2], envp);
 }
 
-static void	parent_process(char **argv, char **envp, int *fd)
+static void	exec_cmd2(char **argv, char **envp, int *fd)
 {
 	int	outfile;
 
@@ -51,28 +60,28 @@ static void	parent_process(char **argv, char **envp, int *fd)
 int	main(int argc, char **argv, char **envp)
 {
 	int		fd[2];
-	pid_t	pid;
+	pid_t	pid1;
+	pid_t	pid2;
+	int		status1;
+	int		status2;
 
-	if (argc == 5)
-	{
-		if (pipe(fd) == -1)
-		{
-			perror("pipe");
-			return (1);
-		}
-		pid = fork();
-		if (pid == -1)
-		{
-			perror("fork");
-			return (1);
-		}
-		if (pid == 0)
-			child_process(argv, envp, fd);
-		else
-		{
-			waitpid(pid, NULL, 0);
-			parent_process(argv, envp, fd);
-		}
-	}
-	return (0);
+	if (argc != 5)
+		return (ft_putstr_fd("usage: ./pipex infile cmd cmd outfile\n", 2), 1);
+	if (pipe(fd) == -1)
+		return (1);
+	pid1 = fork();
+	if (pid1 == -1)
+		return (perror("fork"), 1);
+	if (pid1 == 0)
+		exec_cmd1(argv, envp, fd);
+	pid2 = fork();
+	if (pid2 == -1)
+		return (perror("fork"), 1);
+	if (pid2 == 0)
+		exec_cmd2(argv, envp, fd);
+	close(fd[0]);
+	close(fd[1]);
+	waitpid(pid1, &status1, 0);
+	waitpid(pid2, &status2, 0);
+	return (exit_status(status2));
 }
